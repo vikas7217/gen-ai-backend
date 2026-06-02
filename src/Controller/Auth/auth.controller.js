@@ -6,6 +6,8 @@ const bycrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const generateOTP = require("../../utils/otpgenerator");
+const notificationService = require("../../Service/Servicer/notification");
+const notificationBody = require("../../utils/notificationbody").notificationBody;
 
 /**
  * @param { email:string,password:string}
@@ -19,11 +21,13 @@ async function loginController(req, res) {
     if (!user) {
       throw new Error(`User not found with email : ${email}`);
     }
+
     // Compare the provided password with the stored hashed password
     const isPasswordMatch = await bycrypt.compare(password, user.password);
     if (!isPasswordMatch) {
       throw new Error("Invalid password");
     }
+
     // Generate JWT tokens for authentication and refresh
     const loginToken = jwt.sign(
       { email: email, userType: user.userRole },
@@ -100,10 +104,12 @@ async function validateAuth(req, res, next) {
       .digest("hex");
 
     const blacklistKey = `blacklist:${accesstokenHash}`;
-    const isTokenBlacklisted =  await global.client.get(blacklistKey);
+    const isTokenBlacklisted = await global.client.get(blacklistKey);
 
-    if(isTokenBlacklisted){
-      return res.status(401).json({ success: false, message: "Token has been revoked" });
+    if (isTokenBlacklisted) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Token has been revoked" });
     }
 
     const isTokenValid = jwt.verify(token, process.env.JWT_SECRET);
@@ -207,7 +213,8 @@ async function refreshToken(req, res) {
 async function logoutUser(req, res) {
   try {
     const refreshToken = req.cookies.refreshToken;
-    const accesstoken = req.headers.authorization && req.headers.authorization.split(" ")[1];
+    const accesstoken =
+      req.headers.authorization && req.headers.authorization.split(" ")[1];
 
     if (!refreshToken) {
       return res
@@ -220,8 +227,7 @@ async function logoutUser(req, res) {
         .status(401)
         .json({ success: false, message: "Access token is missing" });
     }
-      
-    
+
     const refreshTokenHash = await crypto
       .createHash("sha256")
       .update(refreshToken)
@@ -253,7 +259,7 @@ async function logoutUser(req, res) {
     await global.client.set(blacklistKey, "revoked", {
       EX: 20 * 60, // Blacklist the access token for 20 minutes (the same duration as the access token's validity)
     });
-    
+
     res.json(response.data(true, "Logout successful", null));
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -276,13 +282,17 @@ async function loginWithOtp(req, res) {
 
     const otpkey = `otp:${user._id}`;
 
+    const notifyBody = notificationBody.otpNotificationTemplate(email,generatedOTP,user.userName);
+
+    const notifyId = await notificationService.notificationService(notifyBody);
+
     await global.client.set(otpkey, hashOTP, {
       EX: 60 * 1000, // OTP expires in 60 seconds
     });
 
     res.status(200).json({
       message: "otp is sent successfullty",
-      otp: generatedOTP,
+      notifyId: notifyId,
     });
   } catch (error) {
     res.status(400).json({
@@ -324,9 +334,105 @@ async function verifyLoginOtp(req, res) {
   }
 }
 
+async function forgotPassword(req, res) {
+  try {
+    const { email } = req.body;
+    // Find the user by email and account is active
+    const user = await userModel.default.findOne({ email, isActive: 1 });
+
+    if (!user) {
+      throw new Error(`User not found with email : ${email}`);
+    }
+
+    const generatedOTP = generateOTP.generateOTP().toString();
+
+    const hashOTP = await bycrypt.hash(generatedOTP, 10);
+
+    const otpkey = `otp:${user._id}`;
+
+    const notifyBody = notificationBody.getForgotPasswordOtpTemplate(email,generatedOTP,user.userName);
+
+    const notifyId = await notificationService.notificationService(notifyBody);
+
+    await global.client.set(otpkey, hashOTP, {
+      EX: 60 * 1000, // OTP expires in 60 seconds
+    });
+
+    res.status(200).json({
+      message: "otp is sent successfullty",
+      notifyId: notifyId,
+    });
+
+  } catch (error) {
+    res.status(400).json({
+      message: error.message,
+    });
+  }
+}
+
+async function resetPassword(req, res) {
+  try {
+    const { email, password, newPassword } = req.body;
+    // Find the user by email and account is active
+    const user = await userModel.default.findOne({ email, isActive: 1 });
+
+    if (!user) {
+      throw new Error(`User not found with email : ${email}`);
+    }
+    const isPasswordMatch = await bycrypt.compare(password, user.password);
+    if (!isPasswordMatch) {
+      throw new Error("Invalid current password");
+    }
+    
+    user.password = newPassword;
+    await user.save();
+
+    const notifyBody = notificationBody.getPasswordChangedTemplate(email,user.userName);
+
+    const notifyId = await notificationService.notificationService(notifyBody);
+
+    res.status(200).json({
+      message: "Password reset successfully",
+      notifyId: notifyId,
+    });
+  } catch (error) {
+    res.status(400).json({
+      message: error.message,
+    });
+  }
+}
+
+async function userNotification(req, res) {
+  try {
+    const { to, subject, text, html, attachments } = req.body;
+
+    const notifyBody = {
+      to,
+      subject,
+      text,
+      html: html ? html : undefined,
+      attachments,
+    };
+
+    const notifyId = await notificationService.notificationService(notifyBody);
+
+    res.status(200).json({
+      message: "Notification sent successfully",
+      notifyId: notifyId,
+    });
+  } catch (error) {
+    res.status(400).json({
+      message: error.message,
+    });
+  }
+}
+
 exports.loginController = loginController;
 exports.validateAuth = validateAuth;
 exports.refreshToken = refreshToken;
 exports.logoutUser = logoutUser;
 exports.loginWithOtp = loginWithOtp;
 exports.verifyOtp = verifyLoginOtp;
+exports.forgotPassword = forgotPassword;
+exports.resetPassword = resetPassword;
+exports.userNotification = userNotification;
