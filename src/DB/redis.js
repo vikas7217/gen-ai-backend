@@ -10,12 +10,14 @@ async function connectRedis(){
             url: `${provider}://${host}:${port}`
         })
         .on('error', (error)=>{console.error('Redis connection error:',error)})
-        .connect().then(()=> console.info('✅ Redis Connected successfully'));
+        .connect();
 
+        console.log('Connected to Redis successfully');
         global.client = client;
 
     }catch(error){
         console.error('Error connecting to Redis:', error);
     }
 }
+
 module.exports = connectRedis;

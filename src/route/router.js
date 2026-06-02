@@ -63,4 +63,25 @@ route.post('/auth/login/otp',auth.loginWithOtp)
  */
 route.post('/auth/verify/otp',auth.verifyOtp)
 
+/**
+ * @route POST /api/auth/forgot-password
+ * @description Initiate the forgot password process by sending a reset link to the user's email
+ * @access Public
+ */
+route.post('/auth/forgot-password',auth.forgotPassword)
+
+/**
+ * @route POST /api/auth/reset-password
+ * @description Reset the user's password using the token sent to their email
+ * @access Public
+ */
+route.post('/auth/reset-password',auth.resetPassword)
+
+/**
+ * @route POST /api/auth/user-notification
+ * @description Send a notification to the user using the notification service
+ * @access Public
+ */
+route.post('/auth/user-notification', auth.userNotification)
+
 module.exports = route;
