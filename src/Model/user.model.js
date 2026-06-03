@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: true,
+      required: false,
     },
     userRole: {
       type: String,
@@ -24,6 +24,11 @@ const userSchema = new mongoose.Schema(
     isActive: {
       type: Number,
       default: 1,
+    },
+    oauthProviders: {
+      type: String,
+      enum: ["google", "facebook", "github","JWT"],
+      default: "JWT",
     },
   },
   { timestamps: true },

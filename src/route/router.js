@@ -6,6 +6,7 @@ const userRegistrationSchema = require("../Validateschema/user.registration.sche
 const schemaValidator = require("../Validateschema/schema.validator");
 const auth = require("../Controller/Auth/auth.controller");
 const userDetail = require("../Controller/dashbord/userdetail.controller");
+const passport = require("passport");
 
 /**
  * @route POST /api/user/register
@@ -83,5 +84,22 @@ route.post('/auth/reset-password',auth.resetPassword)
  * @access Public
  */
 route.post('/auth/user-notification', auth.userNotification)
+
+/**
+ * @route GET /api/auth/google
+ * @description Authenticate a user using Google OAuth 2.0
+ * @access Public
+ */
+route.get('/auth/google', auth.googleAuth)
+ 
+
+/**
+ * @route GET /api/auth/google/callback
+ * @description Handle the callback from Google OAuth 2.0 authentication
+ * @access Public
+ */
+route.get('/auth/google/callback', passport.authenticate("google", {
+    session: false,
+  }), auth.googleAuthCallbackAndToken)
 
 module.exports = route;

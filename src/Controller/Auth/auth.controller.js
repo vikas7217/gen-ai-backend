@@ -8,7 +8,7 @@ const crypto = require("crypto");
 const generateOTP = require("../../utils/otpgenerator");
 const notificationService = require("../../Service/Servicer/notification");
 const notificationBody = require("../../utils/notificationbody").notificationBody;
-
+const passport = require("passport");
 /**
  * @param { email:string,password:string}
  */
@@ -427,6 +427,64 @@ async function userNotification(req, res) {
   }
 }
 
+async function googleAuth(req, res, next) {
+  try{
+      passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
+
+  }catch(error){
+    res.status(400).json({
+      message: error.message,
+    });
+  }
+}
+
+async function googleAuthCallbackAndToken(req, res) {
+  try{
+
+    const user = req.user;
+     // Generate JWT tokens for authentication and refresh
+    const loginToken = jwt.sign(
+      { email: user.email, userType: "normal" },
+      process.env.JWT_SECRET,
+      { expiresIn: "20m" },
+    );
+
+    const refreshToken = jwt.sign(
+      { email: user.email, userType: "normal" },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" },
+    );
+    // Set the refresh token in an HTTP-only cookie
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    // Hash the refresh token before storing it in the database for security
+    const refreshTokenHash = await crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+
+    const sessionData = new Session.default({
+      user: user._id,
+      refreshTokenHash,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    await sessionData.save();
+
+    res.redirect(`http://127.0.0.1:5500?token=${loginToken}&email=${user.email}&userType=normal`);
+  }
+  catch(error){
+    res.status(400).json({
+      message: error.message,
+    });
+  }
+}
 exports.loginController = loginController;
 exports.validateAuth = validateAuth;
 exports.refreshToken = refreshToken;
@@ -436,3 +494,5 @@ exports.verifyOtp = verifyLoginOtp;
 exports.forgotPassword = forgotPassword;
 exports.resetPassword = resetPassword;
 exports.userNotification = userNotification;
+exports.googleAuth = googleAuth;
+exports.googleAuthCallbackAndToken = googleAuthCallbackAndToken;
