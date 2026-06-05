@@ -1,14 +1,14 @@
-const userDetailService = require("../../Service/Servicer/userdetail.service");
+const userModel  =require('../../Model/user.model')
 
 async function userDetail(req, res) {
   try {
     const request = req.query;
-    const usrDetail = await userModel.default.findOne(request);
+    const usrDetails = await userModel.default.findOne(request);
 
     res.status(200).json({
       success: true,
       message: "User details fetched successfully",
-      data: userDetail,
+      data: usrDetails,
     });
     
   } catch (error) {
