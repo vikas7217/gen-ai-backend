@@ -7,7 +7,8 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const generateOTP = require("../../utils/otpgenerator");
 const notificationService = require("../../Service/Servicer/notification");
-const notificationBody = require("../../utils/notificationbody").notificationBody;
+const notificationBody =
+  require("../../utils/notificationbody").notificationBody;
 const passport = require("passport");
 /**
  * @param { email:string,password:string}
@@ -30,7 +31,12 @@ async function loginController(req, res) {
 
     // Generate JWT tokens for authentication and refresh
     const loginToken = jwt.sign(
-      { email: email, userType: user.userRole },
+      {
+        email: email,
+        userType: user.userRole,
+        userId: user._id,
+        jti: crypto.randomUUID(),
+      },
       process.env.JWT_SECRET,
       { expiresIn: "20m" },
     );
@@ -97,13 +103,9 @@ async function validateAuth(req, res, next) {
         .json({ success: false, message: "Authorization token is missing" });
     }
 
-    // Check if the token is blacklisted
-    const accesstokenHash = await crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
-
-    const blacklistKey = `blacklist:${accesstokenHash}`;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    const blacklistKey = `blacklist:${decoded.jti}`;
     const isTokenBlacklisted = await global.client.get(blacklistKey);
 
     if (isTokenBlacklisted) {
@@ -112,16 +114,13 @@ async function validateAuth(req, res, next) {
         .json({ success: false, message: "Token has been revoked" });
     }
 
-    const isTokenValid = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
 
-    if (!isTokenValid) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Invalid or expired token" });
-    }
     next();
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired token" });
   }
 }
 
@@ -249,16 +248,26 @@ async function logoutUser(req, res) {
 
     res.clearCookie("refreshToken");
 
-    const accesstokenHash = await crypto
-      .createHash("sha256")
-      .update(accesstoken)
-      .digest("hex");
+    // const accesstokenHash = await crypto
+    //   .createHash("sha256")
+    //   .update(accesstoken)
+    //   .digest("hex");
 
-    const blacklistKey = `blacklist:${accesstokenHash}`;
+    // const blacklistKey = `blacklist:${accesstokenHash}`;
 
-    await global.client.set(blacklistKey, "revoked", {
-      EX: 20 * 60, // Blacklist the access token for 20 minutes (the same duration as the access token's validity)
-    });
+   
+
+    
+
+    const decoded = jwt.decode(accesstoken);
+    const blacklistKey = `blacklist:${decoded.jti}`;
+
+    const ttl = decoded?.exp
+      ? decoded.exp - Math.floor(Date.now() / 1000)
+      : 20 * 60;
+    if (ttl > 0) {
+      await global.client.set(blacklistKey, "revoked", { EX: ttl }); // Set the blacklist entry to expire when the access token would naturally expire
+    }
 
     res.json(response.data(true, "Logout successful", null));
   } catch (error) {
@@ -282,7 +291,11 @@ async function loginWithOtp(req, res) {
 
     const otpkey = `otp:${user._id}`;
 
-    const notifyBody = notificationBody.otpNotificationTemplate(email,generatedOTP,user.userName);
+    const notifyBody = notificationBody.otpNotificationTemplate(
+      email,
+      generatedOTP,
+      user.userName,
+    );
 
     const notifyId = await notificationService.notificationService(notifyBody);
 
@@ -350,7 +363,11 @@ async function forgotPassword(req, res) {
 
     const otpkey = `otp:${user._id}`;
 
-    const notifyBody = notificationBody.getForgotPasswordOtpTemplate(email,generatedOTP,user.userName);
+    const notifyBody = notificationBody.getForgotPasswordOtpTemplate(
+      email,
+      generatedOTP,
+      user.userName,
+    );
 
     const notifyId = await notificationService.notificationService(notifyBody);
 
@@ -362,7 +379,6 @@ async function forgotPassword(req, res) {
       message: "otp is sent successfullty",
       notifyId: notifyId,
     });
-
   } catch (error) {
     res.status(400).json({
       message: error.message,
@@ -383,11 +399,14 @@ async function resetPassword(req, res) {
     if (!isPasswordMatch) {
       throw new Error("Invalid current password");
     }
-    
+
     user.password = newPassword;
     await user.save();
 
-    const notifyBody = notificationBody.getPasswordChangedTemplate(email,user.userName);
+    const notifyBody = notificationBody.getPasswordChangedTemplate(
+      email,
+      user.userName,
+    );
 
     const notifyId = await notificationService.notificationService(notifyBody);
 
@@ -428,10 +447,13 @@ async function userNotification(req, res) {
 }
 
 async function googleAuth(req, res, next) {
-  try{
-      passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
-
-  }catch(error){
+  try {
+    passport.authenticate("google", { scope: ["profile", "email"] })(
+      req,
+      res,
+      next,
+    );
+  } catch (error) {
     res.status(400).json({
       message: error.message,
     });
@@ -439,12 +461,16 @@ async function googleAuth(req, res, next) {
 }
 
 async function googleAuthCallbackAndToken(req, res) {
-  try{
-
+  try {
     const user = req.user;
-     // Generate JWT tokens for authentication and refresh
+    // Generate JWT tokens for authentication and refresh
     const loginToken = jwt.sign(
-      { email: user.email, userType: "normal" },
+      {
+        email: user.email,
+        userType: "normal",
+        userId: user?._id,
+        jti: crypto.randomUUID(),
+      },
       process.env.JWT_SECRET,
       { expiresIn: "20m" },
     );
@@ -477,9 +503,10 @@ async function googleAuthCallbackAndToken(req, res) {
 
     await sessionData.save();
 
-    res.redirect(`http://127.0.0.1:5500?token=${loginToken}&email=${user.email}&userType=normal`);
-  }
-  catch(error){
+    res.redirect(
+      `http://127.0.0.1:5500?token=${loginToken}&email=${user.email}&userType=normal`,
+    );
+  } catch (error) {
     res.status(400).json({
       message: error.message,
     });
