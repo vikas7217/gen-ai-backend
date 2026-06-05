@@ -211,13 +211,13 @@ docker run -p 3000:5000 auth-system
 ## Pull From Docker Hub
 
 ```bash
-docker pull <your-dockerhub-image>
+docker pull vikaskumar72/authentication:tagname
 ```
 
 ## Run Docker Hub Image
 
 ```bash
-docker run -p 3000:5000 <your-dockerhub-image>
+docker run -p 3000:5000 vikaskumar72/authentication:tagname
 ```
 ## Or run direct using the docker container 
 
