@@ -205,7 +205,7 @@ docker build -t auth-system .
 ## Run Docker Container
 
 ```bash
-docker run -p 5000:5000 auth-system
+docker run -p 3000:5000 auth-system
 ```
 
 ## Pull From Docker Hub
@@ -217,14 +217,17 @@ docker pull <your-dockerhub-image>
 ## Run Docker Hub Image
 
 ```bash
-docker run -p 5000:5000 <your-dockerhub-image>
+docker run -p 3000:5000 <your-dockerhub-image>
 ```
+## Or run direct using the docker container 
 
+```bash
+docker run -p 3000:5000 vikaskumar72/authentication:tagname
+```
 ---
 
 # Redis server 
 ```bash
-
 docker run -p 6379:6379 -d redis:8.0-rc1
 ```
 
